@@ -1,0 +1,174 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Clean Light Peach Color Tokens */
+    --bg-light: #FFFFFF;
+    --surface-light: #FFF9F8;
+    --card-light: #FFFFFF;
+    --border-light: rgba(255, 143, 115, 0.2);
+
+    --primary-peach: #FF8F73;
+    --primary-coral: #FF5E62;
+    --accent-peach-light: #FFEFEA;
+
+    --text-primary: #1C1917;
+    --text-secondary: #57534E;
+
+    --emerald: #10B981;
+    --amber: #F59E0B;
+    --red: #EF4444;
+  }
+
+  body {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+}
+
+/* Custom Utilities for Light Peach Theme */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 143, 115, 0.2);
+}
+
+.glass-panel-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel-hover:hover {
+  background: #FFFFFF;
+  border-color: rgba(255, 143, 115, 0.5);
+  box-shadow: 0 12px 30px -10px rgba(255, 94, 98, 0.15), 0 0 20px 0 rgba(255, 143, 115, 0.1);
+  transform: translateY(-2px);
+}
+
+.glass-input {
+  background: #FFFFFF;
+  border: 1px solid rgba(255, 143, 115, 0.25);
+  backdrop-filter: blur(8px);
+  color: #1C1917;
+  transition: all 0.2s ease;
+}
+
+.glass-input:focus {
+  outline: none;
+  border-color: rgba(255, 94, 98, 0.7);
+  box-shadow: 0 0 0 3px rgba(255, 143, 115, 0.2), 0 0 15px rgba(255, 94, 98, 0.15);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #FF6B4A 0%, #FF5E62 50%, #E03E43 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-subtle {
+  background: linear-gradient(135deg, #1C1917 30%, #57534E 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-button {
+  background: linear-gradient(135deg, #FF8F73 0%, #FF5E62 100%);
+  transition: all 0.3s ease;
+  color: #FFFFFF;
+}
+
+.gradient-button:hover {
+  background: linear-gradient(135deg, #FF7B5A 0%, #E04B4F 100%);
+  box-shadow: 0 0 25px rgba(255, 94, 98, 0.35);
+  transform: translateY(-1px);
+}
+
+.gradient-border {
+  position: relative;
+  border-radius: 1rem;
+  background: #FFFFFF;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 1.05rem;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 143, 115, 0.6), rgba(255, 94, 98, 0.4), rgba(0, 0, 0, 0.05));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(1deg); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.08); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+
+.shimmer-bg {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,143,115,0.12) 50%, rgba(255,255,255,0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FFF9F8;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 143, 115, 0.35);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 143, 115, 0.6);
+}
+
+/* Light Grid & Dots Background Patterns */
+.bg-grid-pattern {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 143, 115, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 143, 115, 0.08) 1px, transparent 1px);
+}
+
+.bg-dots-pattern {
+  background-image: radial-gradient(rgba(255, 143, 115, 0.15) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
