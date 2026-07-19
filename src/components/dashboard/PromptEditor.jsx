@@ -40,7 +40,7 @@ export function PromptEditor() {
         <textarea
           rows={1}
           value={config.prompt}
-          onChange={(e) => updateConfig('prompt', e.target.value)}
+          onChange={(e) => updateConfig('prompt', e.value || e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Describe your application concept... (e.g. Build a Hospital System with React, Express, SQL...)"
           className="w-full bg-transparent text-stone-900 placeholder-stone-400 text-xs sm:text-sm focus:outline-none resize-none leading-normal font-sans"
@@ -77,7 +77,7 @@ export function PromptEditor() {
           >
             {isGenerating ? (
               <span className="flex items-center gap-1">
-                <Sparkles className="w-3 h-3 animate-spin" /> Synthesizing...
+                <Sparkles className="w-3 h-3 animate-spin" /> Generating your project... this may take up to a minute
               </span>
             ) : (
               <span className="flex items-center gap-1">

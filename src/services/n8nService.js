@@ -1,57 +1,73 @@
-import axiosClient from '../api/axiosClient';
+import axios from 'axios';
 import { generateProjectFromPrompt } from './mockGenerator';
+
+const WEBHOOK_URL = 'https://praveen-10.app.n8n.cloud/webhook/ai-project-generator';
 
 export async function dispatchGenerationRequest(config, onStepUpdate) {
   const steps = [
-    { id: '1', title: 'Analyzing Prompt & Intent...', status: 'in-progress', detail: 'Parsing domain requirements and user constraints' },
-    { id: '2', title: 'Understanding System Requirements...', status: 'pending', detail: 'Mapping frontend framework and backend API controllers' },
-    { id: '3', title: 'Planning System Architecture...', status: 'pending', detail: 'Designing database models and service schemas' },
-    { id: '4', title: 'Generating Directory & Folder Structure...', status: 'pending', detail: 'Creating modular source directories and config files' },
-    { id: '5', title: 'Synthesizing UI Components...', status: 'pending', detail: 'Writing styled React components with Lucide icons' },
-    { id: '6', title: 'Generating Backend Controllers & APIs...', status: 'pending', detail: 'Writing Express REST endpoints and CORS headers' },
-    { id: '7', title: 'Configuring Database Schemas...', status: 'pending', detail: 'Creating connection scripts and query abstractions' },
-    { id: '8', title: 'Generating Environment & Config Files...', status: 'pending', detail: 'Writing Dockerfile, package.json, and Vite settings' },
-    { id: '9', title: 'Creating Documentation README...', status: 'pending', detail: 'Generating quick-start instructions and tech stack breakdown' },
-    { id: '10', title: 'Preparing ZIP Package & Project Tree...', status: 'pending', detail: 'Finalizing downloadable archive package' }
+    { id: '1', title: 'Connecting to AI Agent 1 (Planner)...', status: 'in-progress', detail: 'Parsing requirements and system specifications' },
+    { id: '2', title: 'Running AI Agent 2 (System Architect)...', status: 'pending', detail: 'Designing database models & API controllers' },
+    { id: '3', title: 'Running AI Agent 3 (Code Generator)...', status: 'pending', detail: 'Synthesizing React components & Express server' },
+    { id: '4', title: 'Bundling Full-Stack Project into ZIP...', status: 'pending', detail: 'Packaging source files, configs, and package.json' },
+    { id: '5', title: 'Transmitting Binary ZIP Archive...', status: 'pending', detail: 'Finalizing automatic browser download' }
   ];
 
-  // Helper to step through progression with callback
-  const runProgressSimulation = async () => {
-    for (let i = 0; i < steps.length; i++) {
-      steps[i].status = 'in-progress';
-      if (onStepUpdate) onStepUpdate([...steps]);
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      steps[i].status = 'completed';
+  let currentStepIdx = 0;
+  if (onStepUpdate) onStepUpdate([...steps]);
+
+  // Interval timer to update step UI while waiting 30-60s for 3 AI agents to complete
+  const stepTimer = setInterval(() => {
+    if (currentStepIdx < steps.length - 1) {
+      steps[currentStepIdx].status = 'completed';
+      currentStepIdx++;
+      steps[currentStepIdx].status = 'in-progress';
       if (onStepUpdate) onStepUpdate([...steps]);
     }
-  };
+  }, 8000);
 
-  if (config.useN8nWebhook && config.n8nWebhookUrl) {
-    try {
-      const progressPromise = runProgressSimulation();
-      const apiPromise = axiosClient.post(config.n8nWebhookUrl, {
-        prompt: config.prompt,
-        frontend: config.frontend,
-        language: config.language,
-        styling: config.styling,
-        backend: config.backend,
-        database: config.database,
-        features: config.features,
-        requestedAt: new Date().toISOString()
-      });
-
-      const [_, response] = await Promise.all([progressPromise, apiPromise]);
-      
-      // If n8n returns a project payload, return it, else fall back to synthesized project
-      if (response.data && response.data.folderStructure) {
-        return response.data;
+  try {
+    // Send POST request with JSON payload to n8n cloud webhook
+    const response = await axios.post(
+      WEBHOOK_URL,
+      { prompt: config.prompt },
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        responseType: 'blob',
+        timeout: 300000 // 5 minutes timeout for multi-agent synthesis
       }
-    } catch (err) {
-      console.warn('n8n Webhook connection failed or returned fallback, utilizing local synthesis engine:', err);
-    }
-  }
+    );
 
-  // Fallback to dynamic synthesis engine
-  await runProgressSimulation();
-  return generateProjectFromPrompt(config);
+    clearInterval(stepTimer);
+    steps.forEach((s) => (s.status = 'completed'));
+    if (onStepUpdate) onStepUpdate([...steps]);
+
+    // 1. Convert response to a Blob
+    const blob = new Blob([response.data], { type: 'application/zip' });
+
+    // 2. Create downloadable link & automatically trigger download as "generated-project.zip"
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = 'generated-project.zip';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 10000);
+
+    // Return synthesized project object for completion UI
+    return generateProjectFromPrompt(config);
+  } catch (err) {
+    clearInterval(stepTimer);
+    steps[currentStepIdx].status = 'pending';
+    if (onStepUpdate) onStepUpdate([...steps]);
+
+    console.error('Failed to generate project via n8n webhook:', err);
+    throw new Error(
+      err.response?.data?.message ||
+      err.message ||
+      'Failed to connect to n8n AI webhook. Please check your network connection and try again.'
+    );
+  }
 }
