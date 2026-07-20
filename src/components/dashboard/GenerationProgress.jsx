@@ -4,10 +4,12 @@ import { Sparkles, CheckCircle2, Loader2, Terminal, Cpu } from 'lucide-react';
 import { useGenerator } from '../../contexts/GeneratorContext';
 
 export function GenerationProgress() {
-  const { generationSteps } = useGenerator();
+  const { generationSteps, generationState } = useGenerator();
 
   const completedCount = generationSteps.filter((s) => s.status === 'completed').length;
-  const progressPercent = Math.round((completedCount / (generationSteps.length || 10)) * 100);
+  const progressPercent = Math.round((completedCount / (generationSteps.length || 5)) * 100);
+
+  const isStep1 = generationState === 'analyzing';
 
   return (
     <div className="max-w-4xl mx-auto flex flex-col justify-between rounded-2xl bg-white border border-rose-200 p-4 shadow-lg">
@@ -19,8 +21,12 @@ export function GenerationProgress() {
               <Sparkles className="w-4 h-4 text-rose-500 animate-spin" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-stone-900 tracking-tight">Synthesizing Project...</h3>
-              <p className="text-[11px] text-rose-600 font-mono">AuraCraft AI Neural Compiler v2.4</p>
+              <h3 className="text-sm sm:text-base font-bold text-stone-900 tracking-tight">
+                {isStep1 ? 'Analyzing your requirements...' : 'Generating your project files, this may take a minute...'}
+              </h3>
+              <p className="text-[11px] text-rose-600 font-mono">
+                {isStep1 ? 'Preparing 3 Stack Architecture Options' : 'n8n Multi-Agent AI Code Synthesis Active'}
+              </p>
             </div>
           </div>
           <span className="text-xl font-black text-stone-900 font-mono">{progressPercent}%</span>
@@ -77,11 +83,11 @@ export function GenerationProgress() {
       <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between text-[11px] font-mono text-stone-600">
         <div className="flex items-center space-x-2">
           <Terminal className="w-3.5 h-3.5 text-rose-500" />
-          <span>Generating user-defined source code & architecture schemas...</span>
+          <span>{isStep1 ? 'Analyzing your requirements...' : 'Generating your project files, this may take a minute...'}</span>
         </div>
         <div className="flex items-center space-x-2 text-stone-400">
           <Cpu className="w-3 h-3" />
-          <span>Node #04</span>
+          <span>{isStep1 ? 'Analyze Agent' : 'Code Synthesis Agent'}</span>
         </div>
       </div>
     </div>

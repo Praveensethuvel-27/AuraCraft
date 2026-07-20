@@ -4,7 +4,7 @@ import { useGenerator } from '../../contexts/GeneratorContext';
 import { useToast } from '../../contexts/ToastContext';
 
 export function PromptEditor() {
-  const { config, updateConfig, startGeneration, isGenerating } = useGenerator();
+  const { config, updateConfig, startAnalysis, isGenerating, generationState } = useGenerator();
   const { addToast } = useToast();
 
   const handleEnhancePrompt = () => {
@@ -28,19 +28,21 @@ export function PromptEditor() {
   const handleKeyDown = (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      startGeneration();
+      if (!isGenerating && config.prompt.trim()) {
+        startAnalysis();
+      }
     }
   };
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Ultra Compact Prompt Box */}
+      {/* Ultra Compact Bottom Prompt Box */}
       <div className="relative rounded-2xl bg-white border border-rose-300 focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-200/50 transition-all p-2.5 shadow-lg shadow-rose-500/10">
         {/* Input Textarea */}
         <textarea
           rows={1}
           value={config.prompt}
-          onChange={(e) => updateConfig('prompt', e.value || e.target.value)}
+          onChange={(e) => updateConfig('prompt', e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Describe your application concept... (e.g. Build a Hospital System with React, Express, SQL...)"
           className="w-full bg-transparent text-stone-900 placeholder-stone-400 text-xs sm:text-sm focus:outline-none resize-none leading-normal font-sans"
@@ -69,15 +71,19 @@ export function PromptEditor() {
             )}
           </div>
 
-          {/* Send Button */}
+          {/* Step 1 Trigger Button */}
           <button
-            onClick={startGeneration}
+            onClick={startAnalysis}
             disabled={isGenerating || !config.prompt.trim()}
             className="flex items-center gap-1 px-3 py-1 rounded-xl bg-gradient-to-r from-orange-400 via-rose-500 to-rose-600 hover:from-orange-500 hover:to-rose-700 text-white font-semibold text-[11px] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 cursor-pointer"
           >
-            {isGenerating ? (
+            {generationState === 'analyzing' ? (
               <span className="flex items-center gap-1">
-                <Sparkles className="w-3 h-3 animate-spin" /> Generating your project... this may take up to a minute
+                <Sparkles className="w-3 h-3 animate-spin" /> Analyzing your requirements...
+              </span>
+            ) : generationState === 'generating' ? (
+              <span className="flex items-center gap-1">
+                <Sparkles className="w-3 h-3 animate-spin" /> Generating your project files, this may take a minute...
               </span>
             ) : (
               <span className="flex items-center gap-1">

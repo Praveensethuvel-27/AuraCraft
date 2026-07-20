@@ -3,15 +3,16 @@ import { Sparkles, Terminal } from 'lucide-react';
 import { PromptEditor } from '../components/dashboard/PromptEditor';
 import { EmptyDashboardState } from '../components/dashboard/EmptyDashboardState';
 import { GenerationProgress } from '../components/dashboard/GenerationProgress';
+import { StackSelectorView } from '../components/dashboard/StackSelectorView';
 import { ProjectPreview } from '../components/dashboard/ProjectPreview';
 import { useGenerator } from '../contexts/GeneratorContext';
 
 export function DashboardPage() {
-  const { isGenerating, currentProject } = useGenerator();
+  const { generationState, currentProject } = useGenerator();
 
   return (
     <div className="min-h-screen bg-white pb-24 px-4 sm:px-6 lg:px-8 relative">
-      <div className="max-w-4xl mx-auto space-y-4 pt-4">
+      <div className="max-w-5xl mx-auto space-y-4 pt-4">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-rose-100">
           <div className="flex items-center space-x-2">
@@ -20,19 +21,21 @@ export function DashboardPage() {
             </div>
             <div>
               <h1 className="text-base font-bold text-stone-900 tracking-tight">AI Project Studio</h1>
-              <p className="text-[11px] text-stone-500">Describe your application concept below to generate production code.</p>
+              <p className="text-[11px] text-stone-500">2-Step AI Architecture & Code Synthesis Engine</p>
             </div>
           </div>
           <div className="hidden sm:flex items-center space-x-1.5 text-[11px] text-stone-600 font-mono bg-rose-50/60 px-2.5 py-1 rounded-lg border border-rose-200/60">
             <Terminal className="w-3 h-3 text-rose-500" />
-            <span>AI Code Synthesizer</span>
+            <span>n8n Multi-Agent Active</span>
           </div>
         </div>
 
         {/* Main Canvas Area */}
         <div>
-          {isGenerating ? (
+          {generationState === 'analyzing' || generationState === 'generating' ? (
             <GenerationProgress />
+          ) : generationState === 'selecting_stack' ? (
+            <StackSelectorView />
           ) : currentProject ? (
             <ProjectPreview />
           ) : (

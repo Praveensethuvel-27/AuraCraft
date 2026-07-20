@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 import { PRESET_PROMPTS } from '../constants/presets';
-import { dispatchGenerationRequest } from '../services/n8nService';
+import { analyzeProjectPrompt, generateProjectWithStack } from '../services/n8nService';
 import { useToast } from './ToastContext';
 
 const GeneratorContext = createContext(null);
@@ -22,13 +22,15 @@ export function GeneratorProvider({ children }) {
       darkMode: true,
       responsiveDesign: true,
     },
-    n8nWebhookUrl: 'https://praveen-10.app.n8n.cloud/webhook/ai-project-generator',
-    useN8nWebhook: true,
   });
 
-  const [isGenerating, setIsGenerating] = useState(false);
+  // 2-Step Generation State: 'idle' | 'analyzing' | 'selecting_stack' | 'generating' | 'completed'
+  const [generationState, setGenerationState] = useState('idle');
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [selectedStack, setSelectedStack] = useState(null);
   const [generationSteps, setGenerationSteps] = useState([]);
   const [currentProject, setCurrentProject] = useState(null);
+
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
@@ -53,57 +55,86 @@ export function GeneratorProvider({ children }) {
     }));
   };
 
-  const updateFeature = (featureKey, value) => {
-    setConfig((prev) => ({
-      ...prev,
-      features: {
-        ...prev.features,
-        [featureKey]: value,
-      },
-    }));
-  };
-
-  const startGeneration = async () => {
+  /**
+   * STEP 1: Analyze prompt & fetch 3 stack options
+   */
+  const startAnalysis = async () => {
     if (!config.prompt.trim()) {
       addToast('Please enter a prompt describing your project concept.', 'warning');
       return;
     }
 
-    setIsGenerating(true);
+    setGenerationState('analyzing');
+    setAnalysisResult(null);
+    setSelectedStack(null);
     setCurrentProject(null);
     setGenerationSteps([]);
 
     try {
-      const generatedProject = await dispatchGenerationRequest(config, (steps) => {
+      const result = await analyzeProjectPrompt(config, (steps) => {
         setGenerationSteps(steps);
       });
 
-      setCurrentProject(generatedProject);
-      addToast('Project generated & downloaded successfully!', 'success');
+      setAnalysisResult(result);
+      setGenerationState('selecting_stack');
+      addToast('Analysis complete! Select an architecture stack below.', 'success');
+    } catch (err) {
+      console.error('Analysis failed:', err);
+      setGenerationState('idle');
+      addToast(err.message || 'Failed to analyze project. Please try again.', 'error');
+    }
+  };
+
+  /**
+   * STEP 2: Confirm chosen stack & generate code ZIP
+   */
+  const confirmAndGenerate = async (stackOption) => {
+    if (!analysisResult) return;
+
+    setSelectedStack(stackOption);
+    setGenerationState('generating');
+    setGenerationSteps([]);
+
+    try {
+      const project = await generateProjectWithStack(analysisResult, stackOption, (steps) => {
+        setGenerationSteps(steps);
+      });
+
+      setCurrentProject(project);
+      setGenerationState('completed');
+      addToast('Full-stack project generated & downloaded successfully!', 'success');
     } catch (err) {
       console.error('Generation failed:', err);
+      setGenerationState('selecting_stack');
       addToast(err.message || 'Failed to generate project. Please try again.', 'error');
-    } finally {
-      setIsGenerating(false);
     }
   };
 
   const resetGenerator = () => {
+    setGenerationState('idle');
+    setAnalysisResult(null);
+    setSelectedStack(null);
     setCurrentProject(null);
     setGenerationSteps([]);
   };
+
+  const isGenerating = generationState === 'analyzing' || generationState === 'generating';
 
   return (
     <GeneratorContext.Provider
       value={{
         config,
         updateConfig,
-        updateFeature,
         applyPreset,
+        generationState,
+        setGenerationState,
+        analysisResult,
+        selectedStack,
         isGenerating,
         generationSteps,
         currentProject,
-        startGeneration,
+        startAnalysis,
+        confirmAndGenerate,
         resetGenerator,
         isCommandPaletteOpen,
         setIsCommandPaletteOpen,
