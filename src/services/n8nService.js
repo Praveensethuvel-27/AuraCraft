@@ -54,43 +54,29 @@ export async function analyzeProjectPrompt(config, onStepUpdate) {
 }
 
 /**
- * STEP 2: Generate project via async polling (jobId + check-status polling loop)
+ * STEP 2: Generate project via async polling check-status (returns JSON files array)
  */
 export async function generateProjectWithStack(analysisResult, selectedStack, onStepUpdate) {
-  const steps = [
-    { id: '1', title: 'Generating Async Job ID & Triggering n8n Generator...', status: 'in-progress', detail: `Stack: ${selectedStack.name}` },
-    { id: '2', title: 'Running AI Agent 1 (Planner & Architect)...', status: 'pending', detail: 'Designing database models & API specifications' },
-    { id: '3', title: 'Running AI Agent 2 (Full-Stack Coder)...', status: 'pending', detail: 'Synthesizing React components & Express controllers' },
-    { id: '4', title: 'Polling Job Status & Bundling ZIP...', status: 'pending', detail: 'Polling check-status every 5 seconds' },
-    { id: '5', title: 'Extracting Real Source Tree & Triggering Download...', status: 'pending', detail: 'Transmitting generated-project.zip to browser' }
+  const initialSteps = [
+    { id: '1', title: 'Generating Async Job ID & Triggering Generator...', status: 'in-progress', detail: `Stack: ${selectedStack.name}` },
+    { id: '2', title: 'Waiting for File Generation Stream...', status: 'pending', detail: 'Polling check-status endpoint every 5 seconds' }
   ];
 
-  let currentStepIdx = 0;
-  if (onStepUpdate) onStepUpdate([...steps]);
+  if (onStepUpdate) onStepUpdate(initialSteps);
 
-  // Interval timer to update step UI during polling
-  const stepTimer = setInterval(() => {
-    if (currentStepIdx < steps.length - 1) {
-      steps[currentStepIdx].status = 'completed';
-      currentStepIdx++;
-      steps[currentStepIdx].status = 'in-progress';
-      if (onStepUpdate) onStepUpdate([...steps]);
-    }
-  }, 15000);
+  // 1. Generate random UUID jobId
+  const jobId = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : 'job_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+
+  const payload = {
+    ...analysisResult,
+    selectedStack,
+    jobId
+  };
 
   try {
-    // 1. Generate random UUID jobId
-    const jobId = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : 'job_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
-
-    const payload = {
-      ...analysisResult,
-      selectedStack,
-      jobId
-    };
-
-    // 2. Initial POST to generate-project (returns immediately with acknowledgment)
+    // 2. Initial POST to generate-project (acknowledgment call)
     await axios.post(
       GENERATE_WEBHOOK_URL,
       payload,
@@ -100,12 +86,12 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
       }
     );
 
-    // 3. Start Polling check-status every 5 seconds (up to 5 minutes timeout)
+    // 3. Poll check-status every 5 seconds
     const pollStartTime = Date.now();
     const POLL_INTERVAL = 5000; // 5 seconds
-    const POLL_TIMEOUT = 300000; // 5 minutes
+    const POLL_TIMEOUT = 300000; // 5 minutes timeout
 
-    let zipBlob = null;
+    let doneData = null;
 
     while (Date.now() - pollStartTime < POLL_TIMEOUT) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
@@ -116,69 +102,65 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
           { jobId },
           {
             headers: { 'Content-Type': 'application/json' },
-            responseType: 'blob',
             timeout: 30000
           }
         );
 
-        const blob = statusRes.data;
-        const contentType = statusRes.headers['content-type'] || blob.type || '';
+        const data = statusRes.data;
 
-        // Check if response is JSON (processing / not_found)
-        if (contentType.includes('application/json')) {
-          const text = await blob.text();
-          try {
-            const json = JSON.parse(text);
-            if (json.status === 'processing' || json.status === 'not_found') {
-              continue; // Keep polling
-            }
-          } catch (e) {
-            // Not valid JSON
-          }
+        // When status is "done"
+        if (data && data.status === 'done') {
+          doneData = data;
+          break;
         }
 
-        // Check text sample for status string
-        const textSample = await blob.slice(0, 100).text();
-        if (textSample.includes('"status"')) {
-          try {
-            const json = JSON.parse(textSample);
-            if (json.status === 'processing' || json.status === 'not_found') {
-              continue; // Keep polling
-            }
-          } catch (e) {}
-        }
+        // When status is "processing" or "not_found"
+        if (data && (data.status === 'processing' || data.status === 'not_found')) {
+          const total = data.totalFiles || 9;
+          const completedCount = data.completedFiles ? data.completedFiles.length : 0;
+          const currentIdx = Math.min(completedCount + 1, total);
+          const currentFile = data.currentFile || 'src/App.js';
+          const modelUsed = data.currentModel || 'Qwen (Primary)';
+          const isBackupModel = modelUsed.toLowerCase().includes('backup');
 
-        // If we reach here, we received the binary ZIP file!
-        zipBlob = blob;
-        break;
+          // Extract model name without parenthesis
+          const cleanModelName = modelUsed.split(' ')[0] || modelUsed;
+
+          const progressTitle = `Generating file ${currentIdx} of ${total}: ${currentFile} (using ${cleanModelName})`;
+          const backupNotice = isBackupModel
+            ? `Switched to backup model (${cleanModelName}) due to rate limits`
+            : null;
+
+          const dynamicSteps = [
+            {
+              id: 'status_step',
+              title: progressTitle,
+              status: 'in-progress',
+              detail: backupNotice || `Completed ${completedCount} of ${total} files`,
+              isBackupNotice: !!backupNotice,
+              backupNoticeText: backupNotice
+            }
+          ];
+
+          if (onStepUpdate) onStepUpdate(dynamicSteps);
+        }
       } catch (pollErr) {
         console.warn('Poll status request error (retrying in 5s):', pollErr);
       }
     }
 
-    if (!zipBlob) {
+    if (!doneData || !doneData.files) {
       throw new Error('Generating your project timed out after 5 minutes. Please try again.');
     }
 
-    clearInterval(stepTimer);
-    steps.forEach((s) => (s.status = 'completed'));
-    if (onStepUpdate) onStepUpdate([...steps]);
+    const files = doneData.files || [];
 
-    // 4. Automatically trigger browser download as "generated-project.zip"
-    const downloadUrl = URL.createObjectURL(zipBlob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = 'generated-project.zip';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(downloadUrl), 10000);
+    // Trigger client-side ZIP download for convenience
+    await downloadAllFilesAsZip(files, 'generated-project');
 
-    // 5. Read real ZIP content with JSZip for in-app preview
-    const realProject = await parseZipToProjectObject(zipBlob, analysisResult.prompt || '', selectedStack);
-    return realProject;
+    // Build real project object for in-app file tree and code preview
+    return buildProjectFromFilesArray(files, analysisResult.prompt || '', selectedStack);
   } catch (err) {
-    clearInterval(stepTimer);
     console.error('Async generate project polling error:', err);
     throw new Error(
       err.response?.data?.message ||
@@ -189,22 +171,51 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
 }
 
 /**
- * Parses binary ZIP blob with JSZip to build the real file tree project object
+ * Single File Download Helper
  */
-export async function parseZipToProjectObject(blob, prompt, selectedStack) {
-  const zip = await JSZip.loadAsync(blob);
+export function downloadSingleFile(file) {
+  const content = file.content || '';
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const fileName = (file.path || 'file.txt').split('/').pop() || 'file.txt';
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
+}
+
+/**
+ * Client-Side JSZip Bundle Download Helper
+ */
+export async function downloadAllFilesAsZip(files, projectName = 'generated-project') {
+  if (!files || files.length === 0) return;
+  const zip = new JSZip();
+  const folder = zip.folder(projectName);
+
+  for (const file of files) {
+    folder.file(file.path, file.content || '');
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = `${projectName}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(downloadUrl), 10000);
+}
+
+/**
+ * Constructs a real project object from JSON files array ({ path, content, modelUsed })
+ */
+export function buildProjectFromFilesArray(files, prompt, selectedStack) {
   const rootNodes = [];
   const folderMap = new Map();
-  const fileItems = [];
-
-  const filenames = Object.keys(zip.files);
-  for (const filename of filenames) {
-    const entry = zip.files[filename];
-    if (!entry.dir) {
-      const content = await entry.async('string');
-      fileItems.push({ path: filename, content });
-    }
-  }
 
   function getOrCreateFolder(folderPath) {
     if (!folderPath || folderPath === '.' || folderPath === '/') return null;
@@ -238,8 +249,8 @@ export async function parseZipToProjectObject(blob, prompt, selectedStack) {
     return folderMap.get(folderPath);
   }
 
-  for (const item of fileItems) {
-    const normalizedPath = item.path.replace(/\\/g, '/');
+  for (const item of files) {
+    const normalizedPath = (item.path || 'file.txt').replace(/\\/g, '/');
     const pathParts = normalizedPath.split('/').filter(Boolean);
     const fileName = pathParts.pop();
     const folderPath = pathParts.join('/');
@@ -248,7 +259,8 @@ export async function parseZipToProjectObject(blob, prompt, selectedStack) {
       name: fileName,
       path: normalizedPath,
       type: 'file',
-      content: item.content
+      content: item.content || '',
+      modelUsed: item.modelUsed || 'AI Model'
     };
 
     if (folderPath) {
@@ -263,7 +275,7 @@ export async function parseZipToProjectObject(blob, prompt, selectedStack) {
     }
   }
 
-  const cleanNameMatch = prompt.match(/(?:build|create|generate|develop)\s+(?:a|an)?\s*([a-zA-Z0-9\s-]+?)(?=\s+(?:using|with|for|in)|$)/i);
+  const cleanNameMatch = (prompt || '').match(/(?:build|create|generate|develop)\s+(?:a|an)?\s*([a-zA-Z0-9\s-]+?)(?=\s+(?:using|with|for|in)|$)/i);
   const rawName = cleanNameMatch ? cleanNameMatch[1].trim() : 'Generated Application';
   const displayTitle = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
@@ -274,20 +286,25 @@ export async function parseZipToProjectObject(blob, prompt, selectedStack) {
   return {
     id: 'proj_' + Math.random().toString(36).substring(2, 9),
     name: displayTitle,
-    description: `Full-Stack project generated via n8n AI webhook (${fileItems.length} files).`,
+    description: `Full-Stack project generated via n8n AI webhook (${files.length} files).`,
     framework: framework.toUpperCase(),
     backend: backend.toUpperCase(),
     database: database.toUpperCase(),
-    estimatedFiles: fileItems.length,
-    estimatedComponents: fileItems.filter(f => f.path.includes('component') || f.path.endsWith('.jsx') || f.path.endsWith('.tsx')).length || 4,
-    estimatedApis: fileItems.filter(f => f.path.includes('api') || f.path.includes('route') || f.path.includes('server')).length || 2,
+    estimatedFiles: files.length,
+    estimatedComponents: files.filter(f => (f.path || '').includes('component') || (f.path || '').endsWith('.jsx') || (f.path || '').endsWith('.tsx')).length || 4,
+    estimatedApis: files.filter(f => (f.path || '').includes('api') || (f.path || '').includes('route') || (f.path || '').includes('server')).length || 2,
     estimatedGenTime: 'Real-time',
     folderStructure: rootNodes,
+    files: files.map(f => ({
+      path: f.path,
+      content: f.content || '',
+      modelUsed: f.modelUsed || 'AI Model',
+      name: (f.path || '').split('/').pop() || f.path
+    })),
     techStack: [framework, backend, database],
-    architectureSummary: `Real full-stack architecture initialized with ${framework} UI, ${backend} server, and ${database} database. Total ZIP files: ${fileItems.length}.`,
-    prompt,
-    createdAt: new Date().toISOString(),
-    zipBlob: blob
+    architectureSummary: `Real full-stack codebase initialized with ${framework} UI, ${backend} server, and ${database} database. Total JSON files: ${files.length}.`,
+    prompt: prompt || '',
+    createdAt: new Date().toISOString()
   };
 }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, CheckCircle2, Loader2, Terminal, Cpu } from 'lucide-react';
+import { Sparkles, CheckCircle2, Loader2, Terminal, Cpu, AlertTriangle } from 'lucide-react';
 import { useGenerator } from '../../contexts/GeneratorContext';
 
 export function GenerationProgress() {
@@ -25,7 +25,7 @@ export function GenerationProgress() {
                 {isStep1 ? 'Analyzing your requirements...' : 'Generating your project... this may take 1-3 minutes'}
               </h3>
               <p className="text-[11px] text-rose-600 font-mono">
-                {isStep1 ? 'Preparing 3 Stack Architecture Options' : 'n8n Async Polling & AI Code Synthesis Active'}
+                {isStep1 ? 'Preparing 3 Stack Architecture Options' : 'n8n Live Async File Stream Active'}
               </p>
             </div>
           </div>
@@ -50,7 +50,7 @@ export function GenerationProgress() {
             key={step.id}
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
+            className={`p-2.5 rounded-xl border flex flex-col justify-between text-xs transition-all ${
               step.status === 'completed'
                 ? 'bg-emerald-50/50 border-emerald-200 text-stone-800'
                 : step.status === 'in-progress'
@@ -58,23 +58,33 @@ export function GenerationProgress() {
                 : 'bg-stone-50 border-stone-200 text-stone-400'
             }`}
           >
-            <div className="flex items-center space-x-2.5">
-              {step.status === 'completed' ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-              ) : step.status === 'in-progress' ? (
-                <Loader2 className="w-3.5 h-3.5 text-rose-500 animate-spin shrink-0" />
-              ) : (
-                <span className="w-3.5 h-3.5 rounded-full border border-stone-300 block shrink-0" />
-              )}
-              <div className="flex flex-col">
-                <span className="font-semibold text-stone-900 text-xs">{step.title}</span>
-                {step.detail && <span className="text-[10px] text-stone-500 font-mono">{step.detail}</span>}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                {step.status === 'completed' ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                ) : step.status === 'in-progress' ? (
+                  <Loader2 className="w-3.5 h-3.5 text-rose-500 animate-spin shrink-0" />
+                ) : (
+                  <span className="w-3.5 h-3.5 rounded-full border border-stone-300 block shrink-0" />
+                )}
+                <div className="flex flex-col">
+                  <span className="font-semibold text-stone-900 text-xs">{step.title}</span>
+                  {step.detail && <span className="text-[10px] text-stone-500 font-mono">{step.detail}</span>}
+                </div>
               </div>
+
+              <span className="font-mono text-[9px] uppercase text-stone-400">
+                {step.status === 'completed' ? 'DONE' : step.status === 'in-progress' ? 'RUNNING' : 'WAITING'}
+              </span>
             </div>
 
-            <span className="font-mono text-[9px] uppercase text-stone-400">
-              {step.status === 'completed' ? 'DONE' : step.status === 'in-progress' ? 'RUNNING' : 'WAITING'}
-            </span>
+            {/* Backup Model Notice */}
+            {step.isBackupNotice && (
+              <div className="mt-2 p-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-1.5 font-medium">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>{step.backupNoticeText}</span>
+              </div>
+            )}
           </motion.div>
         ))}
       </div>
@@ -83,11 +93,11 @@ export function GenerationProgress() {
       <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between text-[11px] font-mono text-stone-600">
         <div className="flex items-center space-x-2">
           <Terminal className="w-3.5 h-3.5 text-rose-500" />
-          <span>{isStep1 ? 'Analyzing your requirements...' : 'Generating your project... this may take 1-3 minutes'}</span>
+          <span>{isStep1 ? 'Analyzing your requirements...' : 'Generating your project files...'}</span>
         </div>
         <div className="flex items-center space-x-2 text-stone-400">
           <Cpu className="w-3 h-3" />
-          <span>{isStep1 ? 'Analyze Agent' : 'Async Polling Code Synthesis Agent'}</span>
+          <span>{isStep1 ? 'Analyze Agent' : 'Live File Progress Agent'}</span>
         </div>
       </div>
     </div>

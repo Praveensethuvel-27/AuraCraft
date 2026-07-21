@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Download, Copy, RefreshCw, Rocket, Check, CheckCircle2, Code, FileCode } from 'lucide-react';
+import { Download, Copy, RefreshCw, Rocket, Check, CheckCircle2, Code, FileText, Cpu } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { CodeViewer } from '../ui/CodeViewer';
 import { useGenerator } from '../../contexts/GeneratorContext';
 import { useToast } from '../../contexts/ToastContext';
-import { exportProjectToZip } from '../../services/zipExporter';
+import { downloadSingleFile, downloadAllFilesAsZip } from '../../services/n8nService';
 
-function extractAllFiles(nodes) {
+function extractAllFiles(project) {
+  if (project.files && project.files.length > 0) {
+    return project.files;
+  }
   const fileList = [];
   function scan(items) {
     if (!items) return;
@@ -20,33 +23,39 @@ function extractAllFiles(nodes) {
       }
     }
   }
-  scan(nodes);
+  if (project.folderStructure) scan(project.folderStructure);
   return fileList;
 }
 
 export function ProjectPreview() {
   const { currentProject, resetGenerator, setIsDeployModalOpen } = useGenerator();
   const { addToast } = useToast();
-  const [downloading, setDownloading] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
   const [copied, setCopied] = useState(false);
 
   if (!currentProject) return null;
 
-  const allFiles = extractAllFiles(currentProject.folderStructure);
+  const allFiles = extractAllFiles(currentProject);
   const [selectedFilePath, setSelectedFilePath] = useState(allFiles[0]?.path || '');
 
   const selectedFile = allFiles.find(f => f.path === selectedFilePath) || allFiles[0];
 
-  const handleDownloadZip = async () => {
-    setDownloading(true);
+  const handleDownloadAllZip = async () => {
+    setDownloadingZip(true);
     try {
-      await exportProjectToZip(currentProject);
-      addToast(`Downloaded ${currentProject.name} project ZIP archive!`, 'success');
+      await downloadAllFilesAsZip(allFiles, currentProject.name.toLowerCase().replace(/[^a-z0-9]/g, '-'));
+      addToast(`Downloaded all files as ${currentProject.name} ZIP archive!`, 'success');
     } catch (err) {
       addToast('Failed to prepare ZIP download.', 'error');
     } finally {
-      setDownloading(false);
+      setDownloadingZip(false);
     }
+  };
+
+  const handleDownloadFile = () => {
+    if (!selectedFile) return;
+    downloadSingleFile(selectedFile);
+    addToast(`Downloaded ${selectedFile.name || selectedFile.path}`, 'success');
   };
 
   const handleCopyPrompt = () => {
@@ -58,7 +67,7 @@ export function ProjectPreview() {
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
-      {/* Clean Generated Project Result Card */}
+      {/* Generated Project Header Card */}
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -70,7 +79,7 @@ export function ProjectPreview() {
               <Badge variant="gradient" size="sm" pulse>
                 <CheckCircle2 className="w-3 h-3" /> Generated Successfully
               </Badge>
-              <span className="text-[10px] text-stone-500 font-mono">Synthesized in {currentProject.estimatedGenTime}</span>
+              <span className="text-[10px] text-stone-500 font-mono">{allFiles.length} Total Code Files</span>
             </div>
             <h2 className="text-lg font-black text-stone-900 tracking-tight">
               {currentProject.name}
@@ -83,11 +92,11 @@ export function ProjectPreview() {
             <Button
               variant="primary"
               size="sm"
-              loading={downloading}
-              onClick={handleDownloadZip}
+              loading={downloadingZip}
+              onClick={handleDownloadAllZip}
               icon={Download}
             >
-              Download ZIP
+              Download All (ZIP)
             </Button>
 
             <Button
@@ -120,49 +129,73 @@ export function ProjectPreview() {
         </div>
       </motion.div>
 
-      {/* Real Code File Viewer */}
+      {/* Real Code File Tree & Individual File Preview */}
       {allFiles.length > 0 && (
         <div className="rounded-2xl bg-white border border-rose-200 p-4 space-y-3 shadow-md">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-rose-100">
             <div className="flex items-center space-x-2">
               <Code className="w-4 h-4 text-rose-500" />
               <span className="text-xs font-bold text-stone-900 tracking-tight">
-                Real Project Source Code Preview ({allFiles.length} files)
+                Generated Source Files ({allFiles.length} files)
               </span>
             </div>
 
-            {/* File Selector Dropdown / Pills */}
-            <div className="flex items-center space-x-1.5 overflow-x-auto">
-              {allFiles.slice(0, 5).map((f) => (
-                <button
-                  key={f.path}
-                  onClick={() => setSelectedFilePath(f.path)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer shrink-0 ${
-                    selectedFile?.path === f.path
-                      ? 'bg-rose-500 text-white shadow-xs'
-                      : 'bg-stone-100 text-stone-600 hover:text-stone-900'
-                  }`}
-                >
-                  {f.name}
-                </button>
-              ))}
-              {allFiles.length > 5 && (
-                <select
-                  value={selectedFilePath}
-                  onChange={(e) => setSelectedFilePath(e.target.value)}
-                  className="px-2 py-1 rounded-lg text-xs bg-stone-100 border border-stone-200 text-stone-700 focus:outline-none"
-                >
-                  {allFiles.map((f) => (
-                    <option key={f.path} value={f.path}>
-                      {f.path}
-                    </option>
-                  ))}
-                </select>
-              )}
+            {/* Individual File Download & File Tabs */}
+            <div className="flex items-center space-x-2 overflow-x-auto">
+              <button
+                onClick={handleDownloadFile}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer shrink-0"
+                title="Download this single file"
+              >
+                <FileText className="w-3.5 h-3.5 text-rose-500" />
+                <span>Download File</span>
+              </button>
+
+              <div className="flex items-center space-x-1 overflow-x-auto">
+                {allFiles.slice(0, 4).map((f) => (
+                  <button
+                    key={f.path}
+                    onClick={() => setSelectedFilePath(f.path)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer shrink-0 ${
+                      selectedFile?.path === f.path
+                        ? 'bg-rose-500 text-white shadow-xs'
+                        : 'bg-stone-100 text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    {f.name || f.path.split('/').pop()}
+                  </button>
+                ))}
+
+                {allFiles.length > 4 && (
+                  <select
+                    value={selectedFilePath}
+                    onChange={(e) => setSelectedFilePath(e.target.value)}
+                    className="px-2 py-1 rounded-lg text-xs bg-stone-100 border border-stone-200 text-stone-700 focus:outline-none"
+                  >
+                    {allFiles.map((f) => (
+                      <option key={f.path} value={f.path}>
+                        {f.path}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Real Code Display */}
+          {/* Active File Info Bar */}
+          {selectedFile && (
+            <div className="flex items-center justify-between px-3 py-1.5 bg-rose-50/50 rounded-xl border border-rose-200/60 text-xs">
+              <span className="font-mono text-stone-700 font-semibold">{selectedFile.path}</span>
+              {selectedFile.modelUsed && (
+                <span className="flex items-center gap-1 text-[11px] text-stone-500 font-mono">
+                  <Cpu className="w-3 h-3 text-rose-500" /> Model: {selectedFile.modelUsed}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Code Viewer Component */}
           {selectedFile && (
             <CodeViewer filename={selectedFile.path} code={selectedFile.content || ''} />
           )}
