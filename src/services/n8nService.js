@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 
 const ANALYZE_WEBHOOK_URL = 'https://praveen-10.app.n8n.cloud/webhook/analyze-project';
 const GENERATE_WEBHOOK_URL = 'https://praveen-10.app.n8n.cloud/webhook/generate-project';
+const CHECK_STATUS_WEBHOOK_URL = 'https://praveen-10.app.n8n.cloud/webhook/check-status';
 
 /**
  * STEP 1: Analyze user prompt via n8n webhook and return 3 stack options
@@ -40,37 +41,34 @@ export async function analyzeProjectPrompt(config, onStepUpdate) {
     steps.forEach((s) => (s.status = 'completed'));
     if (onStepUpdate) onStepUpdate([...steps]);
 
-    // Return the JSON response object containing stackOptions
     if (response.data && response.data.stackOptions) {
       return response.data;
     }
 
-    // If response format is wrapped or different, sanitize it
     return sanitizeAnalysisResponse(response.data, config.prompt);
   } catch (err) {
     clearInterval(stepTimer);
     console.warn('Analyze webhook failed, using intelligent fallback analysis:', err);
-    // Provide a structured fallback so testing never breaks
     return getFallbackAnalysis(config.prompt);
   }
 }
 
 /**
- * STEP 2: Generate project code from selected stack option via n8n webhook
+ * STEP 2: Generate project via async polling (jobId + check-status polling loop)
  */
 export async function generateProjectWithStack(analysisResult, selectedStack, onStepUpdate) {
   const steps = [
-    { id: '1', title: 'Sending Selected Stack to n8n Generator...', status: 'in-progress', detail: `Stack: ${selectedStack.name}` },
-    { id: '2', title: 'Running AI Agent 1 (System Planner)...', status: 'pending', detail: 'Generating database models & API specifications' },
-    { id: '3', title: 'Running AI Agent 2 (Frontend & Backend Coder)...', status: 'pending', detail: 'Synthesizing React components & Express controllers' },
-    { id: '4', title: 'Packaging Source Code into ZIP...', status: 'pending', detail: 'Building binary archive & Docker settings' },
-    { id: '5', title: 'Extracting Real Source Tree & Downloading...', status: 'pending', detail: 'Transmitting generated-project.zip to browser' }
+    { id: '1', title: 'Generating Async Job ID & Triggering n8n Generator...', status: 'in-progress', detail: `Stack: ${selectedStack.name}` },
+    { id: '2', title: 'Running AI Agent 1 (Planner & Architect)...', status: 'pending', detail: 'Designing database models & API specifications' },
+    { id: '3', title: 'Running AI Agent 2 (Full-Stack Coder)...', status: 'pending', detail: 'Synthesizing React components & Express controllers' },
+    { id: '4', title: 'Polling Job Status & Bundling ZIP...', status: 'pending', detail: 'Polling check-status every 5 seconds' },
+    { id: '5', title: 'Extracting Real Source Tree & Triggering Download...', status: 'pending', detail: 'Transmitting generated-project.zip to browser' }
   ];
 
   let currentStepIdx = 0;
   if (onStepUpdate) onStepUpdate([...steps]);
 
-  // Interval timer for 1-2 minute synthesis
+  // Interval timer to update step UI during polling
   const stepTimer = setInterval(() => {
     if (currentStepIdx < steps.length - 1) {
       steps[currentStepIdx].status = 'completed';
@@ -78,33 +76,96 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
       steps[currentStepIdx].status = 'in-progress';
       if (onStepUpdate) onStepUpdate([...steps]);
     }
-  }, 12000);
+  }, 15000);
 
   try {
+    // 1. Generate random UUID jobId
+    const jobId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : 'job_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+
     const payload = {
       ...analysisResult,
-      selectedStack
+      selectedStack,
+      jobId
     };
 
-    const response = await axios.post(
+    // 2. Initial POST to generate-project (returns immediately with acknowledgment)
+    await axios.post(
       GENERATE_WEBHOOK_URL,
       payload,
       {
         headers: { 'Content-Type': 'application/json' },
-        responseType: 'blob',
-        timeout: 300000 // 5 minutes timeout
+        timeout: 30000
       }
     );
+
+    // 3. Start Polling check-status every 5 seconds (up to 5 minutes timeout)
+    const pollStartTime = Date.now();
+    const POLL_INTERVAL = 5000; // 5 seconds
+    const POLL_TIMEOUT = 300000; // 5 minutes
+
+    let zipBlob = null;
+
+    while (Date.now() - pollStartTime < POLL_TIMEOUT) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+
+      try {
+        const statusRes = await axios.post(
+          CHECK_STATUS_WEBHOOK_URL,
+          { jobId },
+          {
+            headers: { 'Content-Type': 'application/json' },
+            responseType: 'blob',
+            timeout: 30000
+          }
+        );
+
+        const blob = statusRes.data;
+        const contentType = statusRes.headers['content-type'] || blob.type || '';
+
+        // Check if response is JSON (processing / not_found)
+        if (contentType.includes('application/json')) {
+          const text = await blob.text();
+          try {
+            const json = JSON.parse(text);
+            if (json.status === 'processing' || json.status === 'not_found') {
+              continue; // Keep polling
+            }
+          } catch (e) {
+            // Not valid JSON
+          }
+        }
+
+        // Check text sample for status string
+        const textSample = await blob.slice(0, 100).text();
+        if (textSample.includes('"status"')) {
+          try {
+            const json = JSON.parse(textSample);
+            if (json.status === 'processing' || json.status === 'not_found') {
+              continue; // Keep polling
+            }
+          } catch (e) {}
+        }
+
+        // If we reach here, we received the binary ZIP file!
+        zipBlob = blob;
+        break;
+      } catch (pollErr) {
+        console.warn('Poll status request error (retrying in 5s):', pollErr);
+      }
+    }
+
+    if (!zipBlob) {
+      throw new Error('Generating your project timed out after 5 minutes. Please try again.');
+    }
 
     clearInterval(stepTimer);
     steps.forEach((s) => (s.status = 'completed'));
     if (onStepUpdate) onStepUpdate([...steps]);
 
-    // 1. Convert binary response to a Blob
-    const blob = new Blob([response.data], { type: 'application/zip' });
-
-    // 2. Automatically trigger browser download as "generated-project.zip"
-    const downloadUrl = URL.createObjectURL(blob);
+    // 4. Automatically trigger browser download as "generated-project.zip"
+    const downloadUrl = URL.createObjectURL(zipBlob);
     const link = document.createElement('a');
     link.href = downloadUrl;
     link.download = 'generated-project.zip';
@@ -113,16 +174,16 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
     document.body.removeChild(link);
     setTimeout(() => URL.revokeObjectURL(downloadUrl), 10000);
 
-    // 3. Read real ZIP content with JSZip
-    const realProject = await parseZipToProjectObject(blob, analysisResult.prompt || '', selectedStack);
+    // 5. Read real ZIP content with JSZip for in-app preview
+    const realProject = await parseZipToProjectObject(zipBlob, analysisResult.prompt || '', selectedStack);
     return realProject;
   } catch (err) {
     clearInterval(stepTimer);
-    console.error('Generate project webhook error:', err);
+    console.error('Async generate project polling error:', err);
     throw new Error(
       err.response?.data?.message ||
       err.message ||
-      'Failed to generate project codebase. Please check your network and try again.'
+      'Generating your project failed. Please check your network and try again.'
     );
   }
 }

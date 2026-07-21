@@ -83,7 +83,7 @@ export function PromptEditor() {
               </span>
             ) : generationState === 'generating' ? (
               <span className="flex items-center gap-1">
-                <Sparkles className="w-3 h-3 animate-spin" /> Generating your project files, this may take a minute...
+                <Sparkles className="w-3 h-3 animate-spin" /> Generating your project... this may take 1-3 minutes
               </span>
             ) : (
               <span className="flex items-center gap-1">

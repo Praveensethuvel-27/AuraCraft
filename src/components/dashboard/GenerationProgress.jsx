@@ -22,10 +22,10 @@ export function GenerationProgress() {
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-stone-900 tracking-tight">
-                {isStep1 ? 'Analyzing your requirements...' : 'Generating your project files, this may take a minute...'}
+                {isStep1 ? 'Analyzing your requirements...' : 'Generating your project... this may take 1-3 minutes'}
               </h3>
               <p className="text-[11px] text-rose-600 font-mono">
-                {isStep1 ? 'Preparing 3 Stack Architecture Options' : 'n8n Multi-Agent AI Code Synthesis Active'}
+                {isStep1 ? 'Preparing 3 Stack Architecture Options' : 'n8n Async Polling & AI Code Synthesis Active'}
               </p>
             </div>
           </div>
@@ -83,11 +83,11 @@ export function GenerationProgress() {
       <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between text-[11px] font-mono text-stone-600">
         <div className="flex items-center space-x-2">
           <Terminal className="w-3.5 h-3.5 text-rose-500" />
-          <span>{isStep1 ? 'Analyzing your requirements...' : 'Generating your project files, this may take a minute...'}</span>
+          <span>{isStep1 ? 'Analyzing your requirements...' : 'Generating your project... this may take 1-3 minutes'}</span>
         </div>
         <div className="flex items-center space-x-2 text-stone-400">
           <Cpu className="w-3 h-3" />
-          <span>{isStep1 ? 'Analyze Agent' : 'Code Synthesis Agent'}</span>
+          <span>{isStep1 ? 'Analyze Agent' : 'Async Polling Code Synthesis Agent'}</span>
         </div>
       </div>
     </div>
