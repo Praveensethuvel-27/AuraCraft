@@ -53,17 +53,7 @@ export async function analyzeProjectPrompt(config, onStepUpdate) {
   }
 }
 
-/**
- * STEP 2: Generate project via async polling check-status (returns JSON files array)
- */
 export async function generateProjectWithStack(analysisResult, selectedStack, onStepUpdate) {
-  const initialSteps = [
-    { id: '1', title: 'Generating Async Job ID & Triggering Generator...', status: 'in-progress', detail: `Stack: ${selectedStack.name}` },
-    { id: '2', title: 'Waiting for File Generation Stream...', status: 'pending', detail: 'Polling check-status endpoint every 5 seconds' }
-  ];
-
-  if (onStepUpdate) onStepUpdate(initialSteps);
-
   // 1. Generate random UUID jobId
   const jobId = typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
@@ -76,7 +66,7 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
   };
 
   try {
-    // 2. Initial POST to generate-project (acknowledgment call)
+    // 2. Initial POST to generate-project (acknowledgment call - returns immediately)
     await axios.post(
       GENERATE_WEBHOOK_URL,
       payload,
@@ -89,7 +79,7 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
     // 3. Poll check-status every 5 seconds
     const pollStartTime = Date.now();
     const POLL_INTERVAL = 5000; // 5 seconds
-    const POLL_TIMEOUT = 300000; // 5 minutes timeout
+    const POLL_TIMEOUT = 900000; // 15 minutes (900 seconds)
 
     let doneData = null;
 
@@ -108,57 +98,56 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
 
         const data = statusRes.data;
 
+        if (!data) {
+          throw new Error('No status response received from server.');
+        }
+
         // When status is "done"
-        if (data && data.status === 'done') {
+        if (data.status === 'done') {
           doneData = data;
           break;
         }
 
-        // When status is "processing" or "not_found"
-        if (data && (data.status === 'processing' || data.status === 'not_found')) {
-          const total = data.totalFiles || 9;
-          const completedCount = data.completedFiles ? data.completedFiles.length : 0;
-          const currentIdx = Math.min(completedCount + 1, total);
-          const currentFile = data.currentFile || 'src/App.js';
-          const modelUsed = data.currentModel || 'Qwen (Primary)';
-          const isBackupModel = modelUsed.toLowerCase().includes('backup');
+        // When status is "not_found"
+        if (data.status === 'not_found') {
+          throw new Error('Job was not found on the generation network. It may have failed to initialize.');
+        }
 
-          // Extract model name without parenthesis
-          const cleanModelName = modelUsed.split(' ')[0] || modelUsed;
-
-          const progressTitle = `Generating file ${currentIdx} of ${total}: ${currentFile} (using ${cleanModelName})`;
-          const backupNotice = isBackupModel
-            ? `Switched to backup model (${cleanModelName}) due to rate limits`
-            : null;
-
-          const dynamicSteps = [
-            {
-              id: 'status_step',
-              title: progressTitle,
-              status: 'in-progress',
-              detail: backupNotice || `Completed ${completedCount} of ${total} files`,
-              isBackupNotice: !!backupNotice,
-              backupNoticeText: backupNotice
-            }
-          ];
-
-          if (onStepUpdate) onStepUpdate(dynamicSteps);
+        // When status is "processing"
+        if (data.status === 'processing') {
+          if (onStepUpdate) {
+            onStepUpdate({
+              status: 'processing',
+              totalFiles: data.totalFiles || 9,
+              completedFiles: data.completedFiles || [],
+              currentFile: data.currentFile || 'Initializing file write...',
+              currentModel: data.currentModel || 'Primary Model'
+            });
+          }
         }
       } catch (pollErr) {
-        console.warn('Poll status request error (retrying in 5s):', pollErr);
+        // If it's the "not found" or specific backend error we want to fail immediately
+        if (pollErr.message && pollErr.message.includes('not found')) {
+          throw pollErr;
+        }
+        
+        // We log error and propagate it to show in UI
+        console.warn('Poll status request error:', pollErr);
+        throw new Error(
+          pollErr.response?.data?.message ||
+          pollErr.message ||
+          'Network connection interrupted during status polling.'
+        );
       }
     }
 
     if (!doneData || !doneData.files) {
-      throw new Error('Generating your project timed out after 5 minutes. Please try again.');
+      throw new Error('Generating your project timed out after 15 minutes. Please try again.');
     }
 
     const files = doneData.files || [];
 
-    // Trigger client-side ZIP download for convenience
-    await downloadAllFilesAsZip(files, 'generated-project');
-
-    // Build real project object for in-app file tree and code preview
+    // Build real project object for in-app file tree and code preview (no auto ZIP download here anymore)
     return buildProjectFromFilesArray(files, analysisResult.prompt || '', selectedStack);
   } catch (err) {
     console.error('Async generate project polling error:', err);
@@ -317,6 +306,7 @@ function sanitizeAnalysisResponse(data, prompt) {
     userRoles: data.userRoles || ['Admin', 'User'],
     authentication: data.authentication || 'JWT / OAuth',
     styling: data.styling || 'Tailwind CSS',
+    stackAutoSelected: data.stackAutoSelected ?? false,
     stackOptions: data.stackOptions || getFallbackAnalysis(prompt).stackOptions
   };
 }

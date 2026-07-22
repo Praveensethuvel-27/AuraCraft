@@ -24,11 +24,13 @@ export function GeneratorProvider({ children }) {
     },
   });
 
-  // 2-Step Generation State: 'idle' | 'analyzing' | 'selecting_stack' | 'generating' | 'completed'
+  // 2-Step Generation State: 'idle' | 'analyzing' | 'selecting_stack' | 'generating' | 'completed' | 'error'
   const [generationState, setGenerationState] = useState('idle');
   const [analysisResult, setAnalysisResult] = useState(null);
   const [selectedStack, setSelectedStack] = useState(null);
   const [generationSteps, setGenerationSteps] = useState([]);
+  const [generationProgress, setGenerationProgress] = useState(null);
+  const [generationError, setGenerationError] = useState(null);
   const [currentProject, setCurrentProject] = useState(null);
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -69,6 +71,8 @@ export function GeneratorProvider({ children }) {
     setSelectedStack(null);
     setCurrentProject(null);
     setGenerationSteps([]);
+    setGenerationProgress(null);
+    setGenerationError(null);
 
     try {
       const result = await analyzeProjectPrompt(config, (steps) => {
@@ -76,8 +80,16 @@ export function GeneratorProvider({ children }) {
       });
 
       setAnalysisResult(result);
-      setGenerationState('selecting_stack');
-      addToast('Analysis complete! Select an architecture stack below.', 'success');
+
+      if (result.stackAutoSelected && result.stackOptions && result.stackOptions.length > 0) {
+        const autoStack = result.stackOptions[0];
+        setSelectedStack(autoStack);
+        addToast('Stack auto-selected! Proceeding to project generation...', 'info');
+        await confirmAndGenerate(autoStack, result);
+      } else {
+        setGenerationState('selecting_stack');
+        addToast('Analysis complete! Select an architecture stack below.', 'success');
+      }
     } catch (err) {
       console.error('Analysis failed:', err);
       setGenerationState('idle');
@@ -88,25 +100,34 @@ export function GeneratorProvider({ children }) {
   /**
    * STEP 2: Confirm chosen stack & generate code ZIP
    */
-  const confirmAndGenerate = async (stackOption) => {
-    if (!analysisResult) return;
+  const confirmAndGenerate = async (stackOption, overrideAnalysisResult = null) => {
+    const currentAnalysis = overrideAnalysisResult || analysisResult;
+    if (!currentAnalysis) return;
 
     setSelectedStack(stackOption);
     setGenerationState('generating');
-    setGenerationSteps([]);
+    setGenerationProgress(null);
+    setGenerationError(null);
 
     try {
-      const project = await generateProjectWithStack(analysisResult, stackOption, (steps) => {
-        setGenerationSteps(steps);
+      const project = await generateProjectWithStack(currentAnalysis, stackOption, (progressInfo) => {
+        setGenerationProgress(progressInfo);
       });
 
       setCurrentProject(project);
       setGenerationState('completed');
-      addToast('Full-stack project generated & downloaded successfully!', 'success');
+      addToast('Full-stack project generated successfully!', 'success');
     } catch (err) {
       console.error('Generation failed:', err);
-      setGenerationState('selecting_stack');
+      setGenerationState('error');
+      setGenerationError(err.message || 'Failed to generate project. Please try again.');
       addToast(err.message || 'Failed to generate project. Please try again.', 'error');
+    }
+  };
+
+  const retryGeneration = () => {
+    if (selectedStack) {
+      confirmAndGenerate(selectedStack);
     }
   };
 
@@ -116,6 +137,8 @@ export function GeneratorProvider({ children }) {
     setSelectedStack(null);
     setCurrentProject(null);
     setGenerationSteps([]);
+    setGenerationProgress(null);
+    setGenerationError(null);
   };
 
   const isGenerating = generationState === 'analyzing' || generationState === 'generating';
@@ -132,9 +155,12 @@ export function GeneratorProvider({ children }) {
         selectedStack,
         isGenerating,
         generationSteps,
+        generationProgress,
+        generationError,
         currentProject,
         startAnalysis,
         confirmAndGenerate,
+        retryGeneration,
         resetGenerator,
         isCommandPaletteOpen,
         setIsCommandPaletteOpen,

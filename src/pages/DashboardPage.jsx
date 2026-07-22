@@ -32,7 +32,7 @@ export function DashboardPage() {
 
         {/* Main Canvas Area */}
         <div>
-          {generationState === 'analyzing' || generationState === 'generating' ? (
+          {generationState === 'analyzing' || generationState === 'generating' || generationState === 'error' ? (
             <GenerationProgress />
           ) : generationState === 'selecting_stack' ? (
             <StackSelectorView />
