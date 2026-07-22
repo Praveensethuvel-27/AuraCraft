@@ -67,6 +67,7 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
 
   try {
     // 2. Initial POST to generate-project (acknowledgment call - returns immediately)
+    console.log('Sending generate-project request with payload:', payload);
     await axios.post(
       GENERATE_WEBHOOK_URL,
       payload,
