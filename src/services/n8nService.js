@@ -111,7 +111,20 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
 
         // When status is "not_found"
         if (data.status === 'not_found') {
-          throw new Error('Job was not found on the generation network. It may have failed to initialize.');
+          const elapsed = Date.now() - pollStartTime;
+          if (elapsed < 180000) {
+            if (onStepUpdate) {
+              onStepUpdate({
+                status: 'processing',
+                totalFiles: 9,
+                completedFiles: [],
+                currentFile: 'Starting generation... this may take a moment if the system is busy.',
+                currentModel: 'System Queued'
+              });
+            }
+          } else {
+            throw new Error('Job was not found on the generation network. It may have failed to initialize.');
+          }
         }
 
         // When status is "processing"
