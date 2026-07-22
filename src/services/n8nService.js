@@ -112,7 +112,7 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
         // When status is "not_found"
         if (data.status === 'not_found') {
           const elapsed = Date.now() - pollStartTime;
-          if (elapsed < 180000) {
+          if (elapsed < 600000) {
             if (onStepUpdate) {
               onStepUpdate({
                 status: 'processing',
