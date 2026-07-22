@@ -66,18 +66,28 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
   };
 
   try {
-    // 2. Initial POST to generate-project (acknowledgment call - returns immediately)
-    console.log('Sending generate-project request with payload:', payload);
-    await axios.post(
-      GENERATE_WEBHOOK_URL,
-      payload,
-      {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 30000
-      }
-    );
+    // 2. FIRST: Call POST to generate-project and wait for acknowledgment
+    console.log('[generate-project] BEFORE POST request to:', GENERATE_WEBHOOK_URL);
+    console.log('[generate-project] Payload sent:', payload);
 
-    // 3. Poll check-status every 5 seconds
+    const initResponse = await fetch(GENERATE_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const initText = await initResponse.text();
+    console.log('[generate-project] AFTER POST response status:', initResponse.status, 'Body:', initText);
+
+    if (!initResponse.ok) {
+      console.error('[generate-project] Webhook returned non-2xx status:', initResponse.status, initText);
+      throw new Error(`generate-project webhook failed with status ${initResponse.status}: ${initText}`);
+    }
+
+    // 3. ONLY THEN: Start polling check-status every 5 seconds
+    console.log('[check-status] Starting status polling loop for jobId:', jobId);
     const pollStartTime = Date.now();
     const POLL_INTERVAL = 5000; // 5 seconds
     const POLL_TIMEOUT = 900000; // 15 minutes (900 seconds)
@@ -88,16 +98,22 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
 
       try {
-        const statusRes = await axios.post(
-          CHECK_STATUS_WEBHOOK_URL,
-          { jobId },
-          {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 30000
-          }
-        );
+        const elapsedSec = Math.round((Date.now() - pollStartTime) / 1000);
+        console.log(`[check-status] Polling status (jobId: ${jobId}, elapsed: ${elapsedSec}s)...`);
 
-        const data = statusRes.data;
+        const statusRes = await fetch(CHECK_STATUS_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobId })
+        });
+
+        if (!statusRes.ok) {
+          console.warn(`[check-status] HTTP error ${statusRes.status} during poll`);
+          continue;
+        }
+
+        const data = await statusRes.json();
+        console.log('[check-status] Status response:', data);
 
         if (!data) {
           throw new Error('No status response received from server.');
@@ -140,18 +156,10 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
           }
         }
       } catch (pollErr) {
-        // If it's the "not found" or specific backend error we want to fail immediately
         if (pollErr.message && pollErr.message.includes('not found')) {
           throw pollErr;
         }
-        
-        // We log error and propagate it to show in UI
-        console.warn('Poll status request error:', pollErr);
-        throw new Error(
-          pollErr.response?.data?.message ||
-          pollErr.message ||
-          'Network connection interrupted during status polling.'
-        );
+        console.warn('[check-status] Poll request exception:', pollErr);
       }
     }
 
@@ -161,12 +169,11 @@ export async function generateProjectWithStack(analysisResult, selectedStack, on
 
     const files = doneData.files || [];
 
-    // Build real project object for in-app file tree and code preview (no auto ZIP download here anymore)
+    // Build real project object for in-app file tree and code preview
     return buildProjectFromFilesArray(files, analysisResult.prompt || '', selectedStack);
   } catch (err) {
-    console.error('Async generate project polling error:', err);
+    console.error('Async generate project execution error:', err);
     throw new Error(
-      err.response?.data?.message ||
       err.message ||
       'Generating your project failed. Please check your network and try again.'
     );
